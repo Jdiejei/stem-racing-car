@@ -83,3 +83,32 @@ def test_warm_start_without_a_case_fails_loudly(tmp_path, monkeypatch):
     monkeypatch.setattr(oc, "_run", lambda cmd, *a: "")
     with pytest.raises(FileNotFoundError):
         oc._mesh(tmp_path, oc.OpenFOAMRunConfig(warm_from=str(tmp_path / "nope")), "bashrc", 60)
+
+
+def test_morph_moves_in_small_steps():
+    pd = oc.morph_point_displacement()
+    assert f"velocity        ({oc.MORPH_STEP_M:g} {oc.MORPH_STEP_M:g} {oc.MORPH_STEP_M:g});" in pd
+    assert oc.MORPH_STEPS * oc.MORPH_STEP_M >= 0.004          # reaches a 4 mm local cut
+
+
+def _mesh_with(tmp_path, monkeypatch, check_text):
+    calls = []
+    monkeypatch.setattr(oc, "_morph", lambda *a: calls.append("morph"))
+    def fake_run(cmd, cwd, bashrc, log, timeout):
+        calls.append(cmd)
+        return check_text if log == "checkMesh_morph.log" else "Mesh OK."
+    monkeypatch.setattr(oc, "_run", fake_run)
+    oc._mesh(tmp_path, oc.OpenFOAMRunConfig(morph_from=str(tmp_path / "ref")), "bashrc", 60)
+    return calls
+
+
+def test_a_good_reshape_is_kept(tmp_path, monkeypatch):
+    calls = _mesh_with(tmp_path, monkeypatch, "Mesh OK.")
+    assert calls == ["morph", "checkMesh", "checkMesh"] and not (tmp_path / "MORPH_FALLBACK").exists()
+
+
+def test_a_bad_reshape_falls_back_to_a_fresh_mesh_and_says_so(tmp_path, monkeypatch):
+    calls = _mesh_with(tmp_path, monkeypatch,
+                       " ***Error in face pyramids: 1 faces are incorrectly oriented.\nFailed 1 mesh checks.\n")
+    assert calls == ["morph", "checkMesh", "blockMesh", "snappyHexMesh -overwrite", "checkMesh"]
+    assert "incorrectly oriented" in (tmp_path / "MORPH_FALLBACK").read_text()

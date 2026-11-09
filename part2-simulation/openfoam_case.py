@@ -1445,13 +1445,18 @@ def _run(cmd: str, cwd: Path, bashrc: str, log_name: str, timeout: int) -> str:
     return proc.stdout
 
 
-MORPH_STEPS = 3
+# The move is spread over MORPH_STEPS steps of at most MORPH_STEP_M each, so the
+# Laplacian relaxes the interior between steps (one step left an inverted face on
+# 2 mm local cuts, 2026-11-09). A move beyond MORPH_STEPS * MORPH_STEP_M is not
+# reached and the mesh check below sends the car to a fresh mesh.
+MORPH_STEPS = 20
+MORPH_STEP_M = 2.5e-4
 
 
 def morph_point_displacement() -> str:
     """0/pointDisplacement for the morph: `car` points follow the new STL
     (nearest-point projection), every other boundary stays put."""
-    return _header("pointVectorField", "pointDisplacement") + """
+    return (_header("pointVectorField", "pointDisplacement") + """
 dimensions      [0 1 0 0 0 0 0];
 internalField   uniform (0 0 0);
 boundaryField
@@ -1460,7 +1465,7 @@ boundaryField
     {
         type            surfaceDisplacement;
         value           uniform (0 0 0);
-        velocity        (1 1 1);
+        velocity        ({MORPH_STEP_M} {MORPH_STEP_M} {MORPH_STEP_M});
         geometry
         {
             car.stl { type triSurfaceMesh; name carTarget; }
@@ -1470,7 +1475,7 @@ boundaryField
     symmetry        { type symmetryPlane; }
     ".*"            { type fixedValue; value uniform (0 0 0); }
 }
-"""
+""").replace("{MORPH_STEP_M}", f"{MORPH_STEP_M:g}")
 
 
 _MORPH_DYNAMIC_MESH = """
@@ -1550,10 +1555,23 @@ def add_upstream_ground_entries(zero_dir: Path) -> None:
 
 
 def _mesh(run: Path, cfg: OpenFOAMRunConfig, bashrc: str, timeout_s: int) -> str:
-    """Snap (or morph) the mesh serially and return the checkMesh log."""
+    """Snap (or morph) the mesh serially and return the checkMesh log.
+
+    REMESH RULE: a reshaped mesh must pass checkMesh. If it does not, the car is
+    meshed fresh instead and the file MORPH_FALLBACK records why, so a study can
+    see (and count) every car that left the reference mesh."""
+    snap = not cfg.morph_from
     if cfg.morph_from:
         _morph(run, cfg, bashrc, timeout_s)
-    else:
+        check = _run("checkMesh", run, bashrc, "checkMesh_morph.log", timeout_s)
+        if "Mesh OK" not in check:
+            bad = [l.strip() for l in check.splitlines() if l.strip().startswith(("***", "Failed"))]
+            _write(run / "MORPH_FALLBACK", "\n".join(bad or ["checkMesh did not report Mesh OK"]) + "\n")
+            print(f"[openfoam_case] reshaped mesh failed checkMesh ({'; '.join(bad)[:200]}); meshing fresh")
+            shutil.rmtree(run / "constant" / "polyMesh", ignore_errors=True)
+            _run("blockMesh", run, bashrc, "blockMesh.log", timeout_s)
+            snap = True
+    if snap:
         _run("snappyHexMesh -overwrite", run, bashrc, "snappyHexMesh.log", timeout_s)
     if cfg.ground_plate_start_m is not None and not cfg.moving_ground:
         topo, create = ground_plate_dicts(cfg.ground_plate_start_m)

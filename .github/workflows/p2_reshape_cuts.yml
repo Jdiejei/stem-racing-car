@@ -101,7 +101,7 @@ jobs:
       - if: always()
         run: |
           mkdir -p keep && cp out/c/summary.json keep/ 2>/dev/null
-          cp part2-simulation/cfd_case_template/runs/*/logs/checkMesh.log keep/ 2>/dev/null; cp part2-simulation/cfd_case_template/runs/*/logs/moveMesh.log keep/ 2>/dev/null; true
+          cp part2-simulation/cfd_case_template/runs/*/logs/checkMesh.log keep/ 2>/dev/null; cp part2-simulation/cfd_case_template/runs/*/logs/moveMesh.log part2-simulation/cfd_case_template/runs/*/MORPH_FALLBACK part2-simulation/cfd_case_template/runs/*/logs/checkMesh_morph.log keep/ 2>/dev/null; true
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: "reshape-${{ inputs.label }}-${{ matrix.cut }}-${{ matrix.mode }}", path: keep/ }

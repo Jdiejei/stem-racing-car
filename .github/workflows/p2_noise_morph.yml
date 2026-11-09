@@ -94,7 +94,7 @@ jobs:
       - name: Mesh quality
         if: always()
         run: |
-          mkdir -p mq && cp part2-simulation/cfd_case_template/runs/*/logs/checkMesh.log mq/ 2>/dev/null; cp part2-simulation/cfd_case_template/runs/*/logs/moveMesh.log mq/ 2>/dev/null; true
+          mkdir -p mq; cp part2-simulation/cfd_case_template/runs/*/logs/checkMesh.log mq/ 2>/dev/null || true; cp part2-simulation/cfd_case_template/runs/*/logs/moveMesh.log part2-simulation/cfd_case_template/runs/*/MORPH_FALLBACK part2-simulation/cfd_case_template/runs/*/logs/checkMesh_morph.log mq/ 2>/dev/null || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
