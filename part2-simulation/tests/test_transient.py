@@ -59,3 +59,24 @@ def test_total_force_comes_from_the_total_object_only(tmp_path):
     t, d = tr.drag_history(tmp_path)
     assert list(d) == [0.2, 0.2]
     assert set(tr.group_histories(tmp_path)) == {"wheelR"}
+
+
+def test_stage_commands_use_an_absolute_case_path(tmp_path, monkeypatch):
+    """A relative case path broke every stage: `cd rel && source .. && cd rel` resolves
+    the second cd against the first (transient runs, 2026-11-09)."""
+    import subprocess
+    seen = {}
+
+    class P:
+        returncode, stdout = 0, ""
+
+    def fake(args, cwd, **kw):
+        seen["cmd"], seen["cwd"] = args[-1], cwd
+        return P()
+
+    monkeypatch.setattr(subprocess, "run", fake)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "case").mkdir()
+    oc._run("decomposePar", Path("case"), "bashrc", "x.log", 10)
+    absolute = str((tmp_path / "case").resolve())
+    assert seen["cmd"].count(f"cd '{absolute}'") == 2 and seen["cwd"] == absolute
