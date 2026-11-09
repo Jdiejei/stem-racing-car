@@ -138,8 +138,13 @@ def main() -> None:
     bashrc = oc.find_openfoam_bashrc(None)
     case = make_case(Path(a.steady_run), Path(a.out), a.duration, a.dt, a.max_co, a.np)
     timeout = 20000
-    oc._run("decomposePar -force", case, bashrc, "decomposePar.log", timeout)
-    oc._run(f"mpirun -np {a.np} pimpleFoam -parallel", case, bashrc, "pimpleFoam.log", timeout)
+    import subprocess
+    try:
+        oc._run("decomposePar -force", case, bashrc, "decomposePar.log", timeout)
+        oc._run(f"mpirun -np {a.np} pimpleFoam -parallel", case, bashrc, "pimpleFoam.log", timeout)
+    except subprocess.CalledProcessError as e:      # show why, in the job log
+        print((e.output or "")[-4000:])
+        raise
     t, d = drag_history(case)
     np.savetxt(case / "drag_history.txt", np.c_[t, 2.0 * d], header="t_s D_full_N")
     rec = summarise(t, d)
