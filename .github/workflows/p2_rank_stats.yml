@@ -1,0 +1,21 @@
+name: p2_rank_stats
+run-name: "Part 2: ranking statistics (${{ inputs.label }})"
+# Spearman and pair sign agreement from {car: [T_search, T_fine]} (rank_study.py stats).
+on:
+  workflow_dispatch:
+    inputs:
+      label: { required: true }
+      pairs: { required: true, description: "JSON {car: [T_search_s, T_fine_s]}" }
+permissions:
+  contents: read
+jobs:
+  stats:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install numpy==2.4.6 scipy==1.17.1
+      - working-directory: part2-simulation
+        run: python rank_study.py stats '${{ inputs.pairs }}' | tee -a "$GITHUB_STEP_SUMMARY"
